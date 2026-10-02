@@ -9,6 +9,10 @@ Expected JSONL record format:
         "qtype":   "choice" | "score" | "noul",
         "target":  [0.9, 0.05, 0.05]   // soft probability distribution from teacher
     }
+
+Records produced by rawit.training.label_teacher carry an additional
+'_label_alpha' field recording the IndoBERTweet blend weight used; it is
+ignored during training but useful for corpus-curation audits.
 """
 
 import json
@@ -75,6 +79,74 @@ class TripletDataset(Dataset):
             "target": target,
             "k": k,
         }
+
+
+# ── Colloquiality curation utility ────────────────────────────────────────────
+
+def colloquial_score(
+    text: str,
+    tweet_model,
+    tweet_tok,
+    reference_texts: Optional[List[str]] = None,
+    device: str = "cpu",
+) -> float:
+    """Estimate how informal/colloquial a Bahasa Indonesia text is.
+
+    Uses IndoBERTweet's [CLS] embedding to measure cosine similarity against a
+    small set of known-informal reference sentences.  Returns a score ∈ [0, 1]
+    where 1.0 is maximally informal.  Intended for **data curation only** — not
+    called during training or inference.
+
+    Args:
+        text: The candidate text to score.
+        tweet_model: Loaded IndoBERTweet AutoModel (frozen, on ``device``).
+        tweet_tok: Corresponding IndoBERTweet AutoTokenizer.
+        reference_texts: Optional override for the reference informal sentences.
+            Defaults to a built-in set of Bahasa Gaul examples.
+        device: Torch device string.
+
+    Example::
+
+        from transformers import AutoModel, AutoTokenizer
+        tweet_tok   = AutoTokenizer.from_pretrained("indolem/indobertweet-base-uncased")
+        tweet_model = AutoModel.from_pretrained("indolem/indobertweet-base-uncased").eval()
+
+        score = colloquial_score("gak tau sih bgt capek bngt", tweet_model, tweet_tok)
+        # → close to 1.0
+
+        score = colloquial_score("Saldo rekening Anda telah berhasil dikreditkan.", tweet_model, tweet_tok)
+        # → lower value
+    """
+    import torch
+    import torch.nn.functional as F
+
+    _DEFAULT_INFORMAL = [
+        "gak tau sih bgt males bngt",        # heavy abbreviation
+        "klo mau pergi tlg kasih tau ya",    # klo / tlg
+        "udh makan blm? laper nih",          # udh / blm
+        "yg bener aja deh sdh keterlaluan",  # yg / sdh
+        "iya dong aku jg mau ikut aja",      # aja / jg
+    ]
+    refs = reference_texts if reference_texts else _DEFAULT_INFORMAL
+
+    dev = torch.device(device)
+
+    def _cls(t: str):
+        enc = tweet_tok(
+            t, return_tensors="pt", truncation=True, max_length=128, padding=False
+        )
+        enc = {k: v.to(dev) for k, v in enc.items()}
+        with torch.inference_mode():
+            return tweet_model(**enc).last_hidden_state[:, 0, :]  # (1, H)
+
+    cls_text = _cls(text)
+    sims = [
+        float(F.cosine_similarity(cls_text, _cls(r), dim=-1).item())
+        for r in refs
+    ]
+    # Normalise from [-1, 1] cosine range to [0, 1]
+    raw = sum(sims) / len(sims)
+    return float(max(0.0, min(1.0, (raw + 1.0) / 2.0)))
 
 
 def collate_fn(batch: List[Dict], pad_id: int = 0) -> Dict[str, torch.Tensor]:

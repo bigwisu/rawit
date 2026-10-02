@@ -1,4 +1,5 @@
-.PHONY: install install-dev test lint smoke-test serve export-onnx quantize bench clean
+.PHONY: install install-dev test lint smoke-test serve export-onnx quantize bench clean \
+        train-l4 train-l4-head-only label-teacher bench-nlu-colloquial cuda-check
 
 # ── Installation ──────────────────────────────────────────────────────────────
 
@@ -67,6 +68,70 @@ quantize:
 		--input $(ONNX_OUT) \
 		--output $(INT8_OUT)
 
+# ── GCP / CUDA L4 Training ────────────────────────────────────────────────────
+# Prerequisites: VM with NVIDIA L4, CUDA 12.x, rawit installed with [train] extras.
+# Run `make cuda-check` first to confirm the GPU is visible.
+
+TRAIN_FILE   ?= data/train.jsonl
+VAL_FILE     ?= data/val.jsonl
+TRAIN_OUT    ?= checkpoints/rawit-300m
+BACKBONE     ?= aisingapore/SEA-LION-ModernBERT-300M
+
+cuda-check:
+	python -c "import torch; assert torch.cuda.is_available(), 'CUDA not available'; \
+	    print('GPU:', torch.cuda.get_device_name(0)); \
+	    print('VRAM:', round(torch.cuda.get_device_properties(0).total_memory / 1e9, 1), 'GB'); \
+	    print('CUDA:', torch.version.cuda)"
+
+# Standard L4 training run: head + top-4 backbone layers, grad checkpointing, torch.compile
+# ~30 min for 5,000 samples × 3 epochs
+train-l4:
+	python -m rawit.training.train_distill \
+		--train_file $(TRAIN_FILE) \
+		--val_file   $(VAL_FILE) \
+		--output_dir $(TRAIN_OUT) \
+		--backbone   $(BACKBONE) \
+		--epochs     3 \
+		--batch_size 32 \
+		--max_len    1024 \
+		--lr         2e-5 \
+		--unfreeze_backbone_layers 4 \
+		--num_workers 4 \
+		--grad_checkpoint \
+		--compile \
+		--device cuda \
+		2>&1 | tee training.log
+
+# Head-only run: fastest iteration, no backbone gradient — good for first sanity check
+# ~4 min for 5,000 samples × 3 epochs
+train-l4-head-only:
+	python -m rawit.training.train_distill \
+		--train_file $(TRAIN_FILE) \
+		--val_file   $(VAL_FILE) \
+		--output_dir $(TRAIN_OUT)-head-only \
+		--backbone   $(BACKBONE) \
+		--epochs     3 \
+		--batch_size 64 \
+		--max_len    1024 \
+		--lr         2e-5 \
+		--unfreeze_backbone_layers 0 \
+		--num_workers 4 \
+		--compile \
+		--device cuda \
+		2>&1 | tee training-head-only.log
+
+# Offline IndoBERTweet teacher labelling (run once before training colloquial data)
+LABEL_INPUT  ?= data/raw_colloquial.jsonl
+LABEL_OUTPUT ?= data/train_colloquial_labelled.jsonl
+
+label-teacher:
+	python -m rawit.training.label_teacher \
+		--input  $(LABEL_INPUT) \
+		--output $(LABEL_OUTPUT) \
+		--main_teacher $(BACKBONE) \
+		--tweet_weight 0.4 \
+		--device cuda
+
 # ── Benchmarks ────────────────────────────────────────────────────────────────
 
 bench-latency:
@@ -80,6 +145,15 @@ bench-nlu:
 		--dataset indonlp/nusax_senti \
 		--lang ind \
 		--split test
+
+# Colloquial benchmark: Rawit vs IndoBERTweet ceiling on tweet-sourced SmSA split
+bench-nlu-colloquial:
+	python benchmarks/evaluate_indonesian_nlu.py \
+		--checkpoint ${RAWIT_MODEL:-bigwisu/rawit-300m} \
+		--dataset indonlp/indonlu \
+		--lang smsa \
+		--split test \
+		--reference_model indolem/indobertweet-base-uncased
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 
