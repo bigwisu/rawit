@@ -83,8 +83,10 @@ cuda-check:
 	    print('VRAM:', round(torch.cuda.get_device_properties(0).total_memory / 1e9, 1), 'GB'); \
 	    print('CUDA:', torch.version.cuda)"
 
-# Standard L4 training run: head + top-4 backbone layers, grad checkpointing, torch.compile
+# Standard L4 training run: head + top-4 backbone layers, grad checkpointing
 # ~30 min for 5,000 samples × 3 epochs
+# Note: --compile is omitted by default; add it manually once Triton/GCC
+#       linkage is confirmed working (run make cuda-check first).
 train-l4:
 	python -m rawit.training.train_distill \
 		--train_file $(TRAIN_FILE) \
@@ -98,7 +100,6 @@ train-l4:
 		--unfreeze_backbone_layers 4 \
 		--num_workers 4 \
 		--grad_checkpoint \
-		--compile \
 		--device cuda \
 		2>&1 | tee training.log
 
