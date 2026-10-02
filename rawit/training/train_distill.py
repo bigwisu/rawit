@@ -143,15 +143,20 @@ def train(args):
 
     # ── torch.compile (L4: ~15-20% step speedup via CUDA graph capture) ───────
     # compile must happen after .to(device) and before the training loop.
-    # It is incompatible with gradient checkpointing on some PyTorch versions;
-    # a warning is emitted but training proceeds uncompiled in that case.
+    # Requires Triton + a working GCC/libcuda linkage in the active venv.
+    # If the backend compiler fails (CalledProcessError from gcc/triton) the
+    # error surfaces on the first forward pass, not at torch.compile() time,
+    # so we suppress dynamo errors globally and fall back to eager execution.
     if args.compile:
         if device.type != "cuda":
             _log.warning("--compile is only effective on CUDA devices; skipping.")
         else:
             try:
+                import torch._dynamo
+                torch._dynamo.config.suppress_errors = True
                 model = torch.compile(model, mode="reduce-overhead")
-                _log.info("torch.compile enabled (mode=reduce-overhead).")
+                _log.info("torch.compile enabled (mode=reduce-overhead); "
+                          "will fall back to eager if Triton linkage fails.")
             except Exception as e:
                 _log.warning("torch.compile failed (%s); continuing without.", e)
 
