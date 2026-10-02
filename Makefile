@@ -21,24 +21,22 @@ test-unit:
 # ── Smoke test: forward pass on MPS / CPU with random weights ─────────────────
 
 smoke-test:
-	python - <<'EOF'
-import torch
-from rawit.configuration_rawit import RawitConfig
-from rawit.modeling_rawit import RawitDecisionHead, QTYPES
-
-D, L, K, B = 768, 64, 4, 2
-head = RawitDecisionHead(hidden_dim=D, num_layers=1, dropout=0.0).eval()
-device = "mps" if torch.backends.mps.is_available() else "cpu"
-head = head.to(device)
-h    = torch.randn(B, L, D, device=device)
-att  = torch.ones(B, L, dtype=torch.long, device=device)
-mpos = torch.randint(0, L, (B, K), device=device)
-mmask = torch.ones(B, K, dtype=torch.bool, device=device)
-qt   = torch.zeros(B, dtype=torch.long, device=device)
-with torch.no_grad():
-    logits, esc = head(h, att, mpos, mmask, qt)
-print(f"OK  logits={logits.shape}  esc={esc.shape}  device={device}")
-EOF
+	python -c "\
+import torch; \
+from rawit.configuration_rawit import RawitConfig; \
+from rawit.modeling_rawit import RawitDecisionHead, QTYPES; \
+D, L, K, B = 768, 64, 4, 2; \
+head = RawitDecisionHead(hidden_dim=D, num_layers=1, dropout=0.0).eval(); \
+device = 'cuda' if torch.cuda.is_available() else 'cpu'; \
+head = head.to(device); \
+h = torch.randn(B, L, D, device=device); \
+att = torch.ones(B, L, dtype=torch.long, device=device); \
+mpos = torch.randint(0, L, (B, K), device=device); \
+mmask = torch.ones(B, K, dtype=torch.bool, device=device); \
+qt = torch.zeros(B, dtype=torch.long, device=device); \
+logits, esc = head(h, att, mpos, mmask, qt); \
+print(f'OK  logits={logits.shape}  esc={esc.shape}  device={device}') \
+"
 
 # ── Serving ───────────────────────────────────────────────────────────────────
 
@@ -78,10 +76,7 @@ TRAIN_OUT    ?= checkpoints/rawit-300m
 BACKBONE     ?= aisingapore/SEA-LION-ModernBERT-300M
 
 cuda-check:
-	python -c "import torch; assert torch.cuda.is_available(), 'CUDA not available'; \
-	    print('GPU:', torch.cuda.get_device_name(0)); \
-	    print('VRAM:', round(torch.cuda.get_device_properties(0).total_memory / 1e9, 1), 'GB'); \
-	    print('CUDA:', torch.version.cuda)"
+	python -c "import torch; assert torch.cuda.is_available(), 'CUDA not available'; print('GPU:', torch.cuda.get_device_name(0)); print('VRAM:', round(torch.cuda.get_device_properties(0).total_memory / 1e9, 1), 'GB'); print('CUDA:', torch.version.cuda)"
 
 # Standard L4 training run: head + top-4 backbone layers, grad checkpointing
 # ~30 min for 5,000 samples × 3 epochs
