@@ -52,6 +52,7 @@ import os
 from pathlib import Path
 
 import torch
+import torch._dynamo
 from torch.utils.data import DataLoader
 
 from ..configuration_rawit import RawitConfig
@@ -152,7 +153,6 @@ def train(args):
             _log.warning("--compile is only effective on CUDA devices; skipping.")
         else:
             try:
-                import torch._dynamo
                 torch._dynamo.config.suppress_errors = True
                 model = torch.compile(model, mode="reduce-overhead")
                 _log.info("torch.compile enabled (mode=reduce-overhead); "
