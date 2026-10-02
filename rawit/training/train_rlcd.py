@@ -1,4 +1,4 @@
-# Copyright 2025 Wisu Suntoyo — Apache-2.0
+# Copyright 2026 Wisu Suntoyo — Apache-2.0
 """RLCD (Reinforcement Learning for Calibrated Decisions) training loop.
 
 Placeholder for Phase 2+ implementation. The scaffold defines the module

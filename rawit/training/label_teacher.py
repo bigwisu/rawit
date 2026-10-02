@@ -1,4 +1,4 @@
-# Copyright 2025 Wisu Suntoyo — Apache-2.0
+# Copyright 2026 Wisu Suntoyo — Apache-2.0
 """Offline blended teacher labelling with IndoBERTweet.
 
 Reads a JSONL file whose records contain 'context', 'rubric', 'options', and

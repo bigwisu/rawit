@@ -1,4 +1,4 @@
-# Copyright 2025 Wisu Suntoyo — Apache-2.0
+# Copyright 2026 Wisu Suntoyo — Apache-2.0
 """Tests for temperature calibration logic."""
 
 import numpy as np

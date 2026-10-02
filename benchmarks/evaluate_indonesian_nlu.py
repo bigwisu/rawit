@@ -1,4 +1,4 @@
-# Copyright 2025 Wisu Suntoyo — Apache-2.0
+# Copyright 2026 Wisu Suntoyo — Apache-2.0
 """IndoNLU / NusaX evaluation suite for Rawit.
 
 Evaluates accuracy and macro-F1 on Indonesian NLU benchmarks using the

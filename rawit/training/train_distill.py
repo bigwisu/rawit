@@ -1,4 +1,4 @@
-# Copyright 2025 Wisu Suntoyo — Apache-2.0
+# Copyright 2026 Wisu Suntoyo — Apache-2.0
 """Supervised distillation training script for Rawit.
 
 Trains the decision head + top N backbone layers on JSONL triplets using

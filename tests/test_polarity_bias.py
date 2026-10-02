@@ -1,4 +1,4 @@
-# Copyright 2025 Wisu Suntoyo — Apache-2.0
+# Copyright 2026 Wisu Suntoyo — Apache-2.0
 """Sun & Xu polarity-bias audit test.
 
 Verifies that swapping option labels (e.g. "ya" ↔ "tidak") does not flip
