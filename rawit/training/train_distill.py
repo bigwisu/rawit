@@ -165,9 +165,14 @@ def train(args):
         lr=args.lr,
         weight_decay=0.01,
     )
-    # L4 Ada Lovelace: use bfloat16 (native BF16 tensor cores; avoids float16 NaN spikes)
-    amp_dtype = torch.bfloat16 if device.type == "cuda" else torch.float16
-    scaler = torch.cuda.amp.GradScaler(enabled=device.type == "cuda")
+    # L4 Ada Lovelace: bfloat16 AMP — BF16 does not overflow so GradScaler is
+    # not needed and does not support BF16 anyway. Use float16 + scaler on
+    # older GPUs (T4, V100) that lack BF16 tensor cores.
+    use_bf16 = device.type == "cuda"
+    amp_dtype = torch.bfloat16 if use_bf16 else torch.float16
+    # GradScaler only for float16; disabled for bfloat16 and CPU
+    use_scaler = device.type == "cuda" and not use_bf16
+    scaler = torch.amp.GradScaler("cuda", enabled=use_scaler)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -179,7 +184,7 @@ def train(args):
         for step, batch in enumerate(train_loader):
             batch = {k: v.to(device) if isinstance(v, torch.Tensor) else v
                      for k, v in batch.items()}
-            with torch.cuda.amp.autocast(enabled=device.type == "cuda", dtype=amp_dtype):
+            with torch.amp.autocast(device.type, enabled=device.type == "cuda", dtype=amp_dtype):
                 logits, _esc = model(
                     input_ids=batch["input_ids"],
                     attention_mask=batch["attention_mask"],
@@ -189,11 +194,16 @@ def train(args):
                 )
                 loss = decision_loss(logits, batch["target"], batch["option_marker_mask"], batch["qtype"])
 
-            scaler.scale(loss).backward()
-            scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(optimizer)
-            scaler.update()
+            if use_scaler:
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                optimizer.step()
             optimizer.zero_grad()
 
             epoch_loss += loss.item()
