@@ -1,3 +1,6 @@
 [submodule "data-curation"]
 	path = data-curation
 	url = git@gitlab.com:bigwisu/rawit-data-curation.git
+[submodule "laya"]
+	path = laya
+	url = git@github.com:bigwisu/laya.git
