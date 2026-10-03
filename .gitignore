@@ -39,3 +39,5 @@ htmlcov/
 raw_logs/
 scripts/
 DATASET_PLAN.md
+project_plan.md
+requirements.txt
