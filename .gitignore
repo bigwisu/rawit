@@ -1,3 +1,5 @@
+.env
+
 # ── Build & packaging ─────────────────────────────────────────────────────────
 *.egg-info/
 dist/
@@ -34,3 +36,6 @@ data/
 .pytest_cache/
 htmlcov/
 .coverage
+raw_logs/
+scripts/
+DATASET_PLAN.md
