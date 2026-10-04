@@ -38,6 +38,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Union
 
+import json
+from pathlib import Path
+
 import numpy as np
 import torch
 
@@ -129,6 +132,59 @@ class RawitPipeline:
         weights_path = hf_hub_download(model_id, "model.safetensors", revision=revision)
         safetensors.torch.load_model(model, weights_path)
         tok = load_tokenizer(config.backbone_name, revision=revision)
+        return cls(model, tok, device=device, **kwargs)
+
+    @classmethod
+    def from_local(
+        cls,
+        checkpoint_dir: str,
+        device: Optional[str] = None,
+        **kwargs,
+    ) -> "RawitPipeline":
+        """Load a Rawit checkpoint from a local directory.
+
+        Expects the directory to contain:
+          - ``config.json``       — saved by ``RawitConfig.save_pretrained()``
+          - ``model.pt``          — full state dict saved by training
+          - ``tokenizer.json``    — tokenizer files (any format AutoTokenizer accepts)
+        """
+        path = Path(checkpoint_dir)
+        if not path.is_dir():
+            raise FileNotFoundError(f"Checkpoint directory not found: {path}")
+
+        # Load config
+        config_path = path / "config.json"
+        with open(config_path, encoding="utf-8") as f:
+            cfg_dict = json.load(f)
+        config = RawitConfig(**{
+            k: cfg_dict[k]
+            for k in RawitConfig().__dict__
+            if k in cfg_dict
+        })
+
+        # Load tokenizer first so we know the exact vocab size the checkpoint used
+        from transformers import AutoTokenizer
+        from .tokenization_rawit import MAX_OPTIONS, RUBRIC_TOKEN, option_tokens
+
+        tok_path = str(path) if (path / "tokenizer.json").exists() else config.backbone_name
+        tok = AutoTokenizer.from_pretrained(tok_path)
+        new_tokens = option_tokens(MAX_OPTIONS) + [RUBRIC_TOKEN]
+        tok.add_special_tokens({"additional_special_tokens": new_tokens})
+
+        # Build model and resize embeddings to match the tokenizer vocab
+        model = RawitModel.from_pretrained_backbone(config, no_init=True)
+        model.encoder.resize_token_embeddings(len(tok))
+
+        # Load full checkpoint weights
+        weights_path = path / "model.pt"
+        state = torch.load(weights_path, map_location="cpu", weights_only=True)
+        # Training may wrap weights under a "model" key
+        if isinstance(state, dict) and "model" in state and not any(
+            k.startswith("encoder.") for k in state
+        ):
+            state = state["model"]
+        model.load_state_dict(state, strict=True)
+
         return cls(model, tok, device=device, **kwargs)
 
     @torch.inference_mode()
