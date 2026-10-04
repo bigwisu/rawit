@@ -1,5 +1,6 @@
 .PHONY: install install-dev test lint smoke-test serve export-onnx quantize bench clean \
-        train-l4 train-l4-head-only label-teacher bench-nlu-colloquial cuda-check
+        train-l4 train-l4-head-only label-teacher bench-nlu-colloquial cuda-check \
+        push-alpha
 
 # ── Installation ──────────────────────────────────────────────────────────────
 
@@ -150,6 +151,20 @@ bench-nlu-colloquial:
 		--lang smsa \
 		--split test \
 		--reference_model indolem/indobertweet-base-uncased
+
+# ── Hugging Face Hub publishing ───────────────────────────────────────────────
+
+HUB_REPO     ?= bigwisu/rawit-300m
+HUB_REVISION ?= alpha
+HUB_CKPT     ?= checkpoints/rawit-300m/checkpoint-epoch3
+
+# Publish the current checkpoint to HF Hub under the given revision tag.
+# Requires HF_TOKEN to be set (or `huggingface-cli login` already done).
+push-alpha:
+	python scripts/push_to_hub.py \
+		--checkpoint $(HUB_CKPT) \
+		--repo       $(HUB_REPO) \
+		--revision   $(HUB_REVISION)
 
 # ── Cleanup ───────────────────────────────────────────────────────────────────
 
