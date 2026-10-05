@@ -46,3 +46,4 @@ requirements.txt
 .envrc
 .gitmodules
 data-curation/
+website/
