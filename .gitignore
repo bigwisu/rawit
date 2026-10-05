@@ -45,3 +45,4 @@ project_plan.md
 requirements.txt
 .envrc
 .gitmodules
+data-curation/
